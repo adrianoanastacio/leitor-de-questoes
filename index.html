@@ -93,6 +93,13 @@
 <script src="sync.js"></script>
 <script src="api-web.js"></script>
 <script type="module" src="app.js"></script>
-<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+<script>
+if ('serviceWorker' in navigator) {
+  // quando chega uma versão nova do app, recarrega uma vez para já usar ela
+  const tinha = !!navigator.serviceWorker.controller; let recarregou = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinha && !recarregou) { recarregou = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
+}
+</script>
 </body>
 </html>

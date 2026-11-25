@@ -123,7 +123,7 @@
   function pickFile(accept) {
     return new Promise((resolve) => {
       const inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = accept; inp.style.display = 'none';
+      inp.type = 'file'; if (accept) inp.accept = accept; inp.style.display = 'none';
       let done = false;
       const fin = (v) => { if (!done) { done = true; inp.remove(); resolve(v); } };
       inp.addEventListener('change', () => fin(inp.files?.[0] || null));
@@ -199,7 +199,8 @@
       return shareOrDownload(`Leitor de Questões - dados - ${date}.json`, JSON.stringify(await exportPackage()), 'application/json');
     },
     importData: async () => {
-      const f = await pickFile('.json,application/json');
+      // sem filtro: o Android nem sempre reconhece .json e deixaria o arquivo cinza no seletor; o app confere depois de ler
+      const f = await pickFile('');
       if (!f) return null;
       try { return await importPackage(JSON.parse(await f.text())); }
       catch (e) { return { erro: e instanceof SyntaxError ? 'O arquivo está corrompido ou não é JSON.' : e.message }; }
