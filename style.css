@@ -561,3 +561,8 @@ button.spill:hover { color: var(--ink); background: var(--hover); }
 }
 .libview header > .row { display: flex; gap: 8px; flex-wrap: wrap; }
 .datacard.misscard { margin-top: 16px; border-left: 4px solid var(--review); }
+.ask.bk .bk-p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ask.bk .ask-f { justify-content: flex-end; }
+.bkline { margin: 12px 0 0; font-size: 13px; color: var(--muted); max-width: 760px; }
+.bkline b { color: var(--ink); }
+.bkline.warn b { color: var(--review); }

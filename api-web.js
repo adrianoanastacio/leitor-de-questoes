@@ -165,9 +165,24 @@
     setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
     return url;
   }
+  // quanto mudou desde o último backup (exportação): questões marcadas/desmarcadas e matérias editadas
+  async function backupInfo() {
+    const ultimo = await kvGet('ultimoBackup', 0);
+    let mudancas = 0;
+    for (const k of await kvKeys('marks:')) {
+      const d = await kvGet(k, null); if (!d) continue;
+      for (const m of Object.values(d.marks || {})) if (SY.markTime(m) > ultimo) mudancas++;
+      for (const t of Object.values(d.apagadas || {})) if (t > ultimo) mudancas++;
+    }
+    const md = await matData();
+    for (const m of md.materias) if ((m.atualizada || 0) > ultimo) mudancas++;
+    return { ultimo, mudancas };
+  }
+
   async function shareOrDownload(name, bytes, type) {
     const file = new File([bytes], name, { type });
-    if (navigator.canShare?.({ files: [file] })) {
+    // no tablet abre o "Compartilhar" (dá para mandar direto ao Drive); no PC só baixa
+    if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
       try { await navigator.share({ files: [file], title: name }); return 'compartilhado'; }
       catch (e) { if (e?.name === 'AbortError') return null; }
     }
@@ -207,8 +222,11 @@
 
     exportData: async () => {
       const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-      return shareOrDownload(`Leitor de Questões - dados - ${date}.json`, JSON.stringify(await exportPackage()), 'application/json');
+      const r = await shareOrDownload(`Leitor de Questões - dados - ${date}.json`, JSON.stringify(await exportPackage()), 'application/json');
+      if (r) await kvSet('ultimoBackup', Date.now());
+      return r;
     },
+    backupInfo,
     importData: async () => {
       // sem filtro: o Android nem sempre reconhece .json e deixaria o arquivo cinza no seletor; o app confere depois de ler
       const f = await pickFile('');

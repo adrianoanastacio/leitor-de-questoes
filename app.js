@@ -505,6 +505,7 @@ async function renderPdfs() {
     WEB ? null : el('div', { class: 'row' },
       el('button', { class: 'minibtn', onclick: async () => { const d = await api.chooseDataDir(); if (d) { toast('Pasta dos dados alterada'); await Promise.all([loadMats(), loadLib()]); if (S.fp) S.marks = cleanMarks((await api.loadMarks(S.fp))?.marks); renderAll(); } } }, icon('folder'), 'Mudar pasta…'),
       el('button', { class: 'minibtn', onclick: () => api.openDataDir() }, 'Abrir pasta'))),
+    WEB ? el('p', { class: 'bkline', id: 'bkLine' }) : null,
     el('div', { class: 'datacard sync' },
       el('p', {}, el('b', { text: 'Levar para outro aparelho. ' }), 'Exporte num aparelho e importe no outro (pelo Google Drive, WhatsApp ou cabo). Ao importar, o app junta tudo: em cada questão vale a marcação mais recente, e o que você desmarcou continua desmarcado. Os PDFs em si não vão junto, só as marcações, as matérias e a lista.'),
       el('div', { class: 'row' },
@@ -512,6 +513,7 @@ async function renderPdfs() {
         el('button', { class: 'minibtn', onclick: importData }, icon('download'), 'Importar dados…')))));
   if (!matchMedia('(hover: none)').matches) wrap.append(el('section', {}, el('h2', { text: 'Atalhos' }), el('div', { class: 'kbd' },
     ...[['J', 'próxima questão'], ['K', 'questão anterior'], ['F', 'marcar como feita'], ['V', 'revisar depois'], ['P', 'copiar print'], ['Ctrl+O', 'abrir PDF'], ['Esc', 'voltar ao livro']].map(([k, t]) => el('span', {}, el('b', { text: k }), t)))));
+  setTimeout(fillBkLine, 0);
   return wrap;
 }
 function agoLong(t) {
@@ -1022,7 +1024,7 @@ async function addPdfs() {
 // ---------- levar os dados para outro aparelho ----------
 async function exportData() {
   await flushMarks();
-  try { const p = await api.exportData(); if (p) toast(WEB ? (p === 'compartilhado' ? 'Dados enviados' : 'Dados salvos em Downloads') : 'Dados exportados', WEB ? undefined : { label: SHOW, fn: () => api.showInFolder(p) }); }
+  try { const p = await api.exportData(); fillBkLine(); if (p) toast(WEB ? (p === 'compartilhado' ? 'Dados enviados' : 'Dados salvos em Downloads') : 'Dados exportados', WEB ? undefined : { label: SHOW, fn: () => api.showInFolder(p) }); }
   catch { toast('Não consegui exportar os dados.'); }
 }
 async function importData() {
@@ -1241,7 +1243,39 @@ function pdfRowMenu(anchor, e, m) {
 }
 
 // ---------- perguntar a matéria ao abrir um PDF novo ----------
-function closeAsk() { document.querySelector('.ask')?.remove(); }
+function closeAsk() { document.querySelector('.ask:not(.bk)')?.remove(); }
+
+// ---------- lembrete de backup (versão web: os dados vivem dentro do Chrome) ----------
+const BK_DIAS = 3;
+let bkCheckedAt = 0;
+async function maybeBackupNag() {
+  if (!api.backupInfo || document.querySelector('.ask.bk')) return;
+  if (Date.now() < ls.get('backupAdiado', 0)) return;
+  bkCheckedAt = Date.now();
+  let info; try { info = await api.backupInfo(); } catch { return; }
+  const dias = info.ultimo ? (Date.now() - info.ultimo) / 864e5 : Infinity;
+  if (!info.mudancas || dias < BK_DIAS) return;
+  const close = () => document.querySelector('.ask.bk')?.remove();
+  const card = el('section', { class: 'ask bk', role: 'dialog', 'aria-label': 'Lembrete de backup' },
+    el('button', { class: 'iconbtn x', 'aria-label': 'Fechar', title: 'Lembrar amanhã', onclick: () => { ls.set('backupAdiado', Date.now() + 864e5); close(); } }, icon('x')),
+    el('div', { class: 'ask-h' },
+      el('b', { text: 'Hora de fazer um backup' }),
+      el('small', { text: (info.ultimo ? `Último backup ${agoLong(info.ultimo)}` : 'Você ainda não fez nenhum backup') + ` · ${plural(info.mudancas, 'mudança', 'mudanças')} desde então` })),
+    el('p', { class: 'bk-p', text: 'Suas marcações ficam só dentro do Chrome deste aparelho. Se os dados dele forem apagados, elas vão junto. O backup cria um arquivo para você guardar no Google Drive.' }),
+    el('div', { class: 'ask-f' },
+      el('button', { class: 'minibtn', onclick: () => { ls.set('backupAdiado', Date.now() + 864e5); close(); } }, 'Amanhã'),
+      el('button', { class: 'pillbtn green', onclick: async () => { close(); await exportData(); } }, icon('upload'), 'Fazer backup agora')));
+  document.body.append(card);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - bkCheckedAt > 6 * 3600e3) maybeBackupNag(); });
+async function fillBkLine() {
+  const p = document.getElementById('bkLine'); if (!p || !api.backupInfo) return;
+  const info = await api.backupInfo().catch(() => null); if (!info) return;
+  const old = info.ultimo && Date.now() - info.ultimo > BK_DIAS * 864e5;
+  p.classList.toggle('warn', !info.ultimo || (old && info.mudancas > 0));
+  p.replaceChildren(el('b', { text: info.ultimo ? `Último backup ${agoLong(info.ultimo)}` : 'Nenhum backup feito ainda' }),
+    info.mudancas ? ` · ${plural(info.mudancas, 'mudança', 'mudanças')} desde então. Use Exportar dados para fazer um.` : ' · tudo salvo no backup.');
+}
 function dismissAsk(fp) { const d = ls.get('matDispensados', []); if (!d.includes(fp)) { d.push(fp); ls.set('matDispensados', d.slice(-500)); } closeAsk(); }
 function maybeAskMat() {
   closeAsk();
@@ -1608,4 +1642,5 @@ function docPageAt(pdf) {
   if (pending) return openPath(pending);
   const last = S.lib.find(x => x.exists);
   if (last) openPath(last.path, null, { ask: false }); else showView(S.mats.length ? 'home' : 'pdfs');
+  setTimeout(maybeBackupNag, 2500);
 })();
