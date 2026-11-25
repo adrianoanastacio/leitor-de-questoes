@@ -559,3 +559,5 @@ button.spill:hover { color: var(--ink); background: var(--hover); }
   .menu button { padding: 12px; }
   .lrow, .fchip, .menu, .qbar { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 }
+.libview header > .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.datacard.misscard { margin-top: 16px; border-left: 4px solid var(--review); }

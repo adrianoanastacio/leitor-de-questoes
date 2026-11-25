@@ -458,7 +458,13 @@ async function renderPdfs() {
   const wrap = el('div', { class: 'libview' });
   wrap.append(el('header', {},
     el('div', {}, el('h1', { text: 'Meus PDFs' }), el('p', { class: 'lede', text: 'Os livros e listas que você já abriu, com o progresso de cada um. ' + (WEB ? 'As marcações ficam guardadas neste aparelho.' : 'As marcações ficam salvas em arquivos no seu computador.') })),
-    el('button', { class: 'pillbtn green', onclick: openDialog }, icon('plus'), 'Abrir PDF')));
+    el('div', { class: 'row' },
+      api.pickPdfs ? el('button', { class: 'pillbtn dark', onclick: addPdfs }, icon('download'), 'Trazer vários PDFs') : null,
+      el('button', { class: 'pillbtn green', onclick: openDialog }, icon('plus'), 'Abrir PDF'))));
+  const nMiss = lib0.filter(e => !e.exists).length;
+  if (WEB && nMiss) wrap.append(el('div', { class: 'datacard sync misscard' },
+    el('p', {}, el('b', { text: `${plural(nMiss, 'PDF está', 'PDFs estão')} sem o arquivo neste aparelho. ` }), 'As marcações já estão aqui; falta só o arquivo. Toque abaixo e escolha os PDFs (pode marcar vários de uma vez, inclusive pelo Google Drive no menu ☰ do seletor). Cada um se liga sozinho às suas marcações.'),
+    el('div', { class: 'row' }, el('button', { class: 'minibtn', onclick: addPdfs }, icon('download'), 'Escolher os PDFs…'))));
   if (lib0.length && (activeMats().length || fid !== 'all')) {
     const chip = (id, t, cor) => el('button', { class: 'fchip', 'aria-pressed': String(fid === id), onclick: () => { S.pdfsFilter = fid === id ? 'all' : id; rerenderView(); } }, cor ? el('i', { class: 'dot', style: `background:${cor}` }) : null, t);
     const nSem = lib0.filter(e => !matsOfFp(e.fp).length).length;
@@ -990,6 +996,27 @@ function writePdf(pages, PW, PH) {
   push(x + `trailer\n<< /Size ${total + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   const out = new Uint8Array(len); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
   return out;
+}
+
+// tablet: escolhe vários PDFs de uma vez e liga cada um às marcações que vieram do outro aparelho
+async function addPdfs() {
+  let files;
+  try { files = await api.pickPdfs(); } catch { files = null; }
+  if (!files?.length) return;
+  let ligados = 0, novos = 0, erros = 0;
+  for (const [i, f] of files.entries()) {
+    toast(`Guardando ${i + 1} de ${files.length}: ${stripPdf(f.name)}`);
+    try {
+      const r = await api.importFile(f);
+      const task = pdfjsLib.getDocument({ data: r.data }); const doc = await task.promise;
+      const fp = doc.fingerprints?.[0] || r.name;
+      const res = await api.attachPdf({ fp, path: r.path, name: r.name, pages: doc.numPages });
+      task.destroy?.();
+      if (res === 'ligado') ligados++; else novos++;
+    } catch (err) { erros++; console.warn("addPdfs", f.name, err); }
+  }
+  await loadLib(); renderLibrary(); rerenderView();
+  toast([ligados && `${plural(ligados, 'PDF ligado', 'PDFs ligados')} às marcações`, novos && `${plural(novos, 'PDF novo', 'PDFs novos')}`, erros && `${erros} não abriu`].filter(Boolean).join(' · ') || 'Nada mudou');
 }
 
 // ---------- levar os dados para outro aparelho ----------

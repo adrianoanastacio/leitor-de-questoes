@@ -57,6 +57,15 @@
     const l = await lib(); const e = l.find(x => x.fp === fp); if (!e) return false;
     e.stats = stats; await writeLib(l); return true;
   }
+  // liga um arquivo a uma entrada da lista sem mudar a ordem (usado ao trazer vários PDFs de uma vez)
+  async function attachPdf(entry) {
+    const l = await lib();
+    const i = l.findIndex(e => e.fp === entry.fp);
+    if (i >= 0) { l[i] = { ...l[i], path: entry.path, pages: l[i].pages || entry.pages, name: l[i].name || entry.name }; }
+    else l.push({ ...entry, lastOpened: Date.now() });
+    await writeLib(l);
+    return i >= 0 ? 'ligado' : 'novo';
+  }
   async function removePdf(fp) { await writeLib((await lib()).filter(e => e.fp !== fp)); return true; }
 
   // ---------- matérias ----------
@@ -120,13 +129,13 @@
 
   // ---------- arquivos: escolher, guardar, baixar ----------
   // o seletor precisa abrir dentro do toque do usuário, por isso input.click() acontece já na chamada
-  function pickFile(accept) {
+  function pickFile(accept, multiple = false) {
     return new Promise((resolve) => {
       const inp = document.createElement('input');
-      inp.type = 'file'; if (accept) inp.accept = accept; inp.style.display = 'none';
+      inp.type = 'file'; if (accept) inp.accept = accept; inp.multiple = multiple; inp.style.display = 'none';
       let done = false;
       const fin = (v) => { if (!done) { done = true; inp.remove(); resolve(v); } };
-      inp.addEventListener('change', () => fin(inp.files?.[0] || null));
+      inp.addEventListener('change', () => fin(multiple ? [...(inp.files || [])] : inp.files?.[0] || null));
       inp.addEventListener('cancel', () => fin(null));
       document.body.append(inp);
       inp.click();
@@ -174,6 +183,8 @@
     isWeb: true,
     openPdfDialog: () => pickFile('application/pdf,.pdf').then(f => (f ? importFile(f) : null)),
     importFile,
+    pickPdfs: () => pickFile('application/pdf,.pdf', true),
+    attachPdf,
     readPdf,
     pendingPdf: async () => null,
     pathForFile: () => null,
