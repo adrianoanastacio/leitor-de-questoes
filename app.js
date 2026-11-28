@@ -318,6 +318,8 @@ toggleDetect.addEventListener('click', () => applyDetect(toggleDetect.getAttribu
 
 // ---------- marcações ----------
 const isDone = (k) => S.marks[k]?.s === 'feita';
+// "revisar" também é questão feita (você já fez, só quer rever): conta no progresso, mas aparece em laranja
+const isWorked = (k) => S.marks[k]?.s === 'feita' || S.marks[k]?.s === 'revisar';
 const isRev = (k) => S.marks[k]?.s === 'revisar';
 const doneAt = (k) => S.marks[k]?.doneAt || S.marks[k]?.t || 0;
 function toggleDone(q) { setStatus(q, isDone(q.key) ? null : 'feita'); }
@@ -383,7 +385,7 @@ function listKeys(id) {
   if (id === 'all') return all;
   if (id === 'revisar') return all.filter(isRev);
   if (id.startsWith('revisar:')) { const r = id.slice(8); return all.filter(k => isRev(k) && S.marks[k].r === r); }
-  if (id === 'feitas') return all.filter(isDone).sort((a, b) => doneAt(b) - doneAt(a));
+  if (id === 'feitas') return all.filter(isWorked).sort((a, b) => doneAt(b) - doneAt(a));
   if (id.startsWith('sec:')) return sections().find(s => s.id === id)?.keys || [];
   return all;
 }
@@ -489,7 +491,7 @@ async function renderPdfs() {
         onkeydown: (ev) => { if (ev.key === 'Enter') e.exists ? openPath(e.path) : openDialog(); } },
         cover,
         el('div', {}, el('b', { text: e.name.replace(/\.pdf$/i, '') }),
-          el('small', { text: tot ? `${st.done || 0} de ${tot} feitas${st.review ? ` · ${st.review} a revisar` : ''}` : 'ainda sem questões' }),
+          el('small', { text: tot ? `${(st.done || 0) + (st.review || 0)} de ${tot} feitas${st.review ? ` · ${st.review} delas a revisar` : ''}` : 'ainda sem questões' }),
           e.exists ? el('small', { text: 'aberto ' + agoLong(e.lastOpened) }) : el('span', { class: 'miss', text: 'Arquivo não encontrado. Clique para localizar.' })),
         el('div', { class: 'bar2' }, el('i', { style: `width:${dPct}%;background:var(--accent)` }), el('i', { style: `width:${rPct}%;background:var(--review)` })),
         el('button', { class: 'rm', title: 'Tirar da lista (as marcações continuam salvas)', 'aria-label': 'Tirar da lista', onclick: async (ev) => { ev.stopPropagation(); await api.removePdf(e.fp); await loadLib(); renderLibrary(); rerenderView(); } }, icon('x')),
@@ -564,7 +566,7 @@ function renderLibrary() {
       rows.push(row('feitas', 'Feitas', `Histórico · ${done.length}`));
     }
     if (f !== 'lists') for (const s of sections()) {
-      const d = s.keys.filter(isDone).length;
+      const d = s.keys.filter(isWorked).length;
       rows.push(row(s.id, s.name, `Seção · ${s.keys.length} questões`, `${d}/${s.keys.length}`));
     }
     if (!S.questions.length) rows.push(el('div', { class: 'libempty' }, el('b', { text: 'Nenhuma questão encontrada' }), 'Se o PDF for escaneado (sem texto), a detecção não tem o que ler.'));
@@ -613,15 +615,15 @@ function play(listId, key) {
 }
 function startList(id) {
   const ks = listKeys(id); if (!ks.length) return;
-  play(id, id === 'feitas' ? ks[0] : (ks.find(k => !isDone(k)) || ks[0]));
+  play(id, id === 'feitas' || id.startsWith('revisar') ? ks[0] : (ks.find(k => !isWorked(k)) || ks[0]));
 }
 function renderList(id) {
   const keys = listKeys(id); const qs = keys.map(k => S.byKey.get(k));
   const [a] = coverColors(id);
   const kind = id.startsWith('sec:') ? 'Seção do livro' : id === 'feitas' ? 'Histórico' : 'Lista';
-  const done = keys.filter(isDone).length;
+  const done = keys.filter(isWorked).length, nRev = keys.filter(isRev).length;
   const subParts = [el('b', { text: S.name }), ` · ${keys.length} ${keys.length === 1 ? 'questão' : 'questões'}`];
-  if (id.startsWith('sec:')) subParts.push(` · ${done} feitas`);
+  if (id.startsWith('sec:')) subParts.push(` · ${done} feitas`, nRev ? el('span', { class: 'rvtx', text: ` (${nRev} a revisar)` }) : '');
   if (id === 'revisar') { const rs = REASONS.map(r => [r, listKeys('revisar:' + r).length]).filter(x => x[1]); if (rs.length) subParts.push(' · ' + rs.map(([r, n]) => `${r} ${n}`).join(', ')); }
   const hero = el('div', { class: 'vhero', style: `--hero:${a}` }, coverEl(id, 'cover bigcover'),
     el('div', { class: 'meta' }, el('span', { class: 'eyebrow', text: kind }), el('h1', { text: listName(id) }), el('div', { class: 'sub' }, ...subParts)));
@@ -689,8 +691,8 @@ function renderPdfHome() {
   if (nextKey) { const q = S.byKey.get(nextKey); tiles.append(tile('all', `Continuar: ${q.label}`, q.where, () => play('all', nextKey))); }
   tiles.append(tile('revisar', 'Para revisar', `${rev.length} ${rev.length === 1 ? 'questão' : 'questões'}`, () => showView('list', 'revisar')));
   tiles.append(tile('feitas', 'Feitas', `${done.length} no total`, () => showView('list', 'feitas')));
-  for (const s of sections().slice(0, 5)) tiles.append(tile(s.id, s.name, `${s.keys.filter(isDone).length} de ${s.keys.length} feitas`, () => showView('list', s.id)));
-  const shelf = el('div', { class: 'shelf' }, ...sections().map(s => el('button', { class: 'card', onclick: () => showView('list', s.id) }, coverEl(s.id), el('span', {}, el('b', { text: s.name }), el('small', { text: `${s.keys.length} questões · ${s.keys.filter(isDone).length} feitas` })), el('span', { class: 'pmini', onclick: (e) => { e.stopPropagation(); startList(s.id); } }, icon('play', 'fill')))));
+  for (const s of sections().slice(0, 5)) tiles.append(tile(s.id, s.name, `${s.keys.filter(isWorked).length} de ${s.keys.length} feitas`, () => showView('list', s.id)));
+  const shelf = el('div', { class: 'shelf' }, ...sections().map(s => el('button', { class: 'card', onclick: () => showView('list', s.id) }, coverEl(s.id), el('span', {}, el('b', { text: s.name }), el('small', { text: `${s.keys.length} questões · ${s.keys.filter(isWorked).length} feitas` })), el('span', { class: 'pmini', onclick: (e) => { e.stopPropagation(); startList(s.id); } }, icon('play', 'fill')))));
   const map = el('div', { class: 'mapgrid' });
   for (const s of sections()) {
     const chips = el('div', { class: 'chips' });
@@ -778,12 +780,12 @@ function step(d) {
 }
 function shuffle() {
   if (S.mq) {
-    const left = S.mq.items.map((x, i) => i).filter(i => i !== S.mq.i && mqStatus(S.mq.items[i]) !== 'feita');
+    const left = S.mq.items.map((x, i) => i).filter(i => i !== S.mq.i && !mqStatus(S.mq.items[i]));
     if (!left.length) { toast('Todas as questões desta lista já estão feitas'); return; }
     gotoMq(left[Math.floor(Math.random() * left.length)]); return;
   }
-  const keys = (S.queue?.keys || []).filter(k => !isDone(k) && k !== S.cur);
-  const pool = keys.length ? keys : S.questions.map(q => q.key).filter(k => !isDone(k) && k !== S.cur);
+  const keys = (S.queue?.keys || []).filter(k => !isWorked(k) && k !== S.cur);
+  const pool = keys.length ? keys : S.questions.map(q => q.key).filter(k => !isWorked(k) && k !== S.cur);
   if (!pool.length) { toast('Todas as questões desta lista já estão feitas'); return; }
   select(pool[Math.floor(Math.random() * pool.length)]);
 }
@@ -1099,7 +1101,8 @@ function matStats(m) {
   const ents = m.pdfs.map(p => libEntry(p.fp)).filter(Boolean);
   const o = { np: ents.length, total: 0, done: 0, review: 0 };
   for (const e of ents) { const s = pdfStats(e); o.total += s.total; o.done += s.done; o.review += s.review; }
-  o.pct = o.total ? Math.round(o.done / o.total * 100) : 0;
+  o.feitas = o.done + o.review;   // revisar conta como feita
+  o.pct = o.total ? Math.round(o.feitas / o.total * 100) : 0;
   return o;
 }
 const semMateria = () => S.lib.filter(e => !matsOfFp(e.fp).length);
@@ -1400,7 +1403,7 @@ async function renderMateria(id) {
   const st = sem ? null : matStats(m), pv = sem ? null : provaInfo(m);
   const sub = sem
     ? [el('b', { text: plural(ents.length, 'PDF', 'PDFs') }), ' que ainda não estão em nenhuma matéria']
-    : [el('b', { text: plural(st.np, 'PDF', 'PDFs') }), ` · ${st.total} questões · ${st.done} feitas (${st.pct}%)`, st.review ? el('span', { class: 'rvtx', text: ` · ${st.review} para revisar` }) : null];
+    : [el('b', { text: plural(st.np, 'PDF', 'PDFs') }), ` · ${st.total} questões · ${st.feitas} feitas (${st.pct}%)`, st.review ? el('span', { class: 'rvtx', text: ` · ${st.review} delas para revisar` }) : null];
   const hero = el('div', { class: 'vhero', style: `--hero:${sem ? '#6d7873' : m.cor}` }, matCover(m, 'cover bigcover'),
     el('div', { class: 'meta' }, el('span', { class: 'eyebrow', text: sem ? 'Organizar' : m.arquivada ? 'Matéria arquivada' : 'Matéria' }), el('h1', { text: sem ? 'Sem matéria' : m.nome }),
       el('div', { class: 'sub' }, ...sub, pv ? el('span', { class: 'pvchip' + (pv.soon ? ' soon' : ''), text: pv.txt }) : null)));
@@ -1444,7 +1447,7 @@ function pdfRow(e, i, m) {
     el('span', { class: 'num' }, el('span', { text: i }), icon('play', 'fill')),
     el('span', { class: 'ttl' }, el('span', { class: 'doc', style: `--c:${m ? m.cor : '#6d7873'}` }, el('i'), el('i'), el('i')),
       el('span', { style: 'min-width:0' }, el('b', { text: stripPdf(e.name) }), el('small', { text: e.exists ? (s.total ? plural(s.total, 'questão', 'questões') : 'nenhuma questão detectada') : 'Arquivo não encontrado. Clique para localizar.' }))),
-    el('span', { class: 'c-st pgr' }, el('span', { class: 'bar2' }, el('i', { style: `width:${dp}%;background:var(--accent)` }), el('i', { style: `width:${rp}%;background:var(--review)` })), el('small', { text: `${s.done}/${s.total}` })),
+    el('span', { class: 'c-st pgr' }, el('span', { class: 'bar2' }, el('i', { style: `width:${dp}%;background:var(--accent)` }), el('i', { style: `width:${rp}%;background:var(--review)` })), el('small', { text: `${s.done + s.review}/${s.total}` })),
     el('span', { class: 'c-dd rvn' + (s.review ? ' on' : ''), text: s.review ? String(s.review) : '—' }),
     el('span', { class: 'when' }, el('span', { class: 'wtx', text: agoLong(e.lastOpened) }),
       el('span', { class: 'acts' }, el('button', { class: 'iconbtn', title: 'Opções do PDF', 'aria-label': 'Opções do PDF', onclick: (ev) => { ev.stopPropagation(); pdfRowMenu(ev.currentTarget, e, m); } }, icon('more', 'fill')))));
@@ -1454,7 +1457,7 @@ function matCard(m) {
   return el('button', { class: 'card mcard', onclick: () => showView('materia', m.id), oncontextmenu: (e) => { e.preventDefault(); matMenu({ x: e.clientX, y: e.clientY }, m); } },
     el('div', { class: 'cover mcover', style: `background:${m.cor};color:${inkFor(m.cor)}` }, el('span', { text: m.sigla || siglaOf(m.nome) || '?' }), pv && pv.n >= 0 ? el('em', { class: 'pv' + (pv.soon ? ' soon' : ''), text: pv.txt }) : null),
     el('span', {}, el('b', { text: m.nome }), el('span', { class: 'bar2' }, el('i', { style: `width:${st.pct}%;background:var(--accent)` })),
-      el('small', {}, `${plural(st.np, 'PDF', 'PDFs')} · ${st.pct}% feitas`, st.review ? el('span', { class: 'rvtx', text: ` · ${st.review} a revisar` }) : null)),
+      el('small', {}, `${plural(st.np, 'PDF', 'PDFs')} · ${st.pct}% feitas`, st.review ? el('span', { class: 'rvtx', text: ` · ${st.review} delas a revisar` }) : null)),
     el('span', { class: 'pmini', title: 'Continuar de onde parou', onclick: (e) => { e.stopPropagation(); continueMat(m); } }, icon('play', 'fill')));
 }
 
@@ -1579,8 +1582,8 @@ async function gotoMq(i) {
 function endMq() { S.mq = null; renderPlayer(); renderLibrary(); }
 function finishMq() {
   const mq = S.mq; if (!mq) return;
-  const n = mq.items.length, d = mq.items.filter(x => mqStatus(x) === 'feita').length, r = mq.items.filter(x => mqStatus(x) === 'revisar').length;
-  toast(`${mq.prova ? 'Fim do simulado' : 'Fim da lista'}: ${d} de ${n} feitas${r ? `, ${r} para revisar` : ''}`, { label: 'Sair da lista', fn: endMq });
+  const n = mq.items.length, d = mq.items.filter(x => mqStatus(x)).length, r = mq.items.filter(x => mqStatus(x) === 'revisar').length;
+  toast(`${mq.prova ? 'Fim do simulado' : 'Fim da lista'}: ${d} de ${n} feitas${r ? ` (${r} para revisar)` : ''}`, { label: 'Sair da lista', fn: endMq });
 }
 function mqCtx() {
   const mq = S.mq; let t = `${mq.name} · ${mq.i + 1}`;
