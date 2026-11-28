@@ -222,7 +222,13 @@
 
     exportData: async () => {
       const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-      const r = await shareOrDownload(`Leitor de Questões - dados - ${date}.json`, JSON.stringify(await exportPackage()), 'application/json');
+      const json = JSON.stringify(await exportPackage());
+      // no tablet vai como .txt: o Chrome do Android não deixa compartilhar .json e cairia em
+      // "baixar" (o arquivo some no gerenciador do HyperOS). O conteúdo é o mesmo; a importação aceita os dois.
+      const tablet = matchMedia('(pointer: coarse)').matches;
+      const r = tablet
+        ? await shareOrDownload(`Leitor de Questoes - dados - ${date}.txt`, json, 'text/plain')
+        : await shareOrDownload(`Leitor de Questões - dados - ${date}.json`, json, 'application/json');
       if (r) await kvSet('ultimoBackup', Date.now());
       return r;
     },

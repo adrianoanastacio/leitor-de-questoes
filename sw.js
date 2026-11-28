@@ -1,6 +1,6 @@
 // Funciona sem internet: guarda os arquivos do app no aparelho. A versão muda a cada publicação,
 // e o app novo passa a valer na próxima vez que você abrir.
-const VERSION = '242b091a599c';
+const VERSION = '618f28b54d3e';
 const FILES = ["./","api-web.js","app.js","detector.js","icons/apple-180.png","icons/icon-192.png","icons/icon-512.png","icons/maskable-512.png","index.html","manifest.webmanifest","pdf.min.mjs","pdf.worker.min.mjs","style.css","sync.js"];
 const CACHE = 'leitor-' + VERSION;
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
